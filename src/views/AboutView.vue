@@ -5,11 +5,6 @@
       <p class="subtitle">Search and explore our inventory</p>
     </div>
 
-    <!-- Controls -->
-    <div class="controls">
-      <ReloadInventoryButton @reloaded="triggerSearch" />
-    </div>
-
     <!-- Custom Search Bar Component -->
     <SearchBar
       v-model:searchType="searchType"
@@ -32,7 +27,6 @@
 import { ref } from 'vue'
 import InventoryTable from '../components/InventoryTable.vue'
 import SearchBar from '../components/SearchBar.vue'
-import ReloadInventoryButton from '../components/ReloadInventoryButton.vue'
 
 const searchType = ref<'available' | 'item' | 'category' | 'tag'>('available')
 const searchQuery = ref('')

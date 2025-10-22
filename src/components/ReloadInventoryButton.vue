@@ -1,7 +1,7 @@
 <template>
   <div class="reload-inventory">
     <button class="reload-button" :disabled="loading" @click="reload">
-      <span v-if="!loading">🔄 Reload Inventory</span>
+      <span v-if="!loading">Reload Inventory</span>
       <span v-else>Reloading...</span>
     </button>
     <span v-if="success" class="status success">Reloaded</span>

@@ -4,19 +4,44 @@
       <label for="search-type">Search by:</label>
       <select id="search-type" v-model="localSearchType" class="search-select">
         <option value="available">All Available Items</option>
+        <option value="checked-out">All Checked Out Items</option>
+        <option value="expired">All Expired Items</option>
         <option value="item">Item Name</option>
         <option value="category">Category</option>
         <option value="tag">Tag</option>
+        <option value="adjacent">AI: Similar Items</option>
+        <option value="autocomplete">AI: Autocomplete</option>
+        <option value="recommend">AI: Recommendations</option>
       </select>
     </div>
 
-    <div class="search-input-group" v-if="localSearchType !== 'available'">
+    <div
+      class="search-input-group"
+      v-if="
+        localSearchType !== 'available' &&
+        localSearchType !== 'checked-out' &&
+        localSearchType !== 'expired' &&
+        localSearchType !== 'recommend'
+      "
+    >
       <label for="search-query">Search term:</label>
       <input
         id="search-query"
         v-model="localSearchQuery"
         type="text"
         :placeholder="getPlaceholder()"
+        class="search-input"
+        @keyup.enter="handleSearch"
+      />
+    </div>
+
+    <div class="search-input-group" v-if="localSearchType === 'recommend'">
+      <label for="search-query">Your interests:</label>
+      <input
+        id="search-query"
+        v-model="localSearchQuery"
+        type="text"
+        placeholder="e.g., music practice, sports, photography..."
         class="search-input"
         @keyup.enter="handleSearch"
       />
@@ -33,19 +58,47 @@
 import { ref, watch } from 'vue'
 
 const props = defineProps<{
-  searchType?: 'available' | 'item' | 'category' | 'tag'
+  searchType?:
+    | 'available'
+    | 'checked-out'
+    | 'expired'
+    | 'item'
+    | 'category'
+    | 'tag'
+    | 'adjacent'
+    | 'autocomplete'
+    | 'recommend'
   searchQuery?: string
 }>()
 
 const emit = defineEmits<{
-  'update:searchType': [value: 'available' | 'item' | 'category' | 'tag']
+  'update:searchType': [
+    value:
+      | 'available'
+      | 'checked-out'
+      | 'expired'
+      | 'item'
+      | 'category'
+      | 'tag'
+      | 'adjacent'
+      | 'autocomplete'
+      | 'recommend',
+  ]
   'update:searchQuery': [value: string]
   search: []
 }>()
 
-const localSearchType = ref<'available' | 'item' | 'category' | 'tag'>(
-  props.searchType || 'available',
-)
+const localSearchType = ref<
+  | 'available'
+  | 'checked-out'
+  | 'expired'
+  | 'item'
+  | 'category'
+  | 'tag'
+  | 'adjacent'
+  | 'autocomplete'
+  | 'recommend'
+>(props.searchType || 'available')
 const localSearchQuery = ref(props.searchQuery || '')
 
 watch(
@@ -86,6 +139,12 @@ function getPlaceholder(): string {
       return 'Enter category...'
     case 'tag':
       return 'Enter tag...'
+    case 'adjacent':
+      return 'Enter item name to find similar items...'
+    case 'autocomplete':
+      return 'Start typing item name...'
+    case 'recommend':
+      return 'Enter your interests...'
     default:
       return ''
   }
@@ -98,7 +157,7 @@ function getPlaceholder(): string {
   gap: 20px;
   align-items: flex-end;
   padding: 30px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #2c3e50;
   border-radius: 12px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   margin-bottom: 30px;

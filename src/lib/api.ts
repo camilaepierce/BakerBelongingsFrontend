@@ -57,7 +57,16 @@ export async function apiFetch<TResponse>(
   }
 
   if (json) {
-    return (await response.json()) as TResponse
+    // Defensive parsing: read text first, then try JSON.parse, else return raw text.
+    const raw = await response.text().catch(() => '')
+    if (!raw) {
+      return undefined as unknown as TResponse
+    }
+    try {
+      return JSON.parse(raw) as TResponse
+    } catch {
+      return raw as unknown as TResponse
+    }
   }
 
   // @ts-expect-error caller must cast when json=false

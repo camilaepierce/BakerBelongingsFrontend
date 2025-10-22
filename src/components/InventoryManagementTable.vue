@@ -1,6 +1,6 @@
 <template>
   <div class="inventory-viewer">
-    <h1 v-if="!hideTitle">Inventory Viewer</h1>
+    <h1 v-if="!hideTitle">Inventory Management</h1>
 
     <!-- Search Controls -->
     <div class="search-controls" v-if="!hideSearchControls">
@@ -10,6 +10,7 @@
           <select v-model="searchType">
             <option value="available">View Available</option>
             <option value="checked-out">View Checked Out</option>
+            <option value="expired">View Expired</option>
             <option value="item">Search by Item Name</option>
             <option value="category">Search by Category</option>
             <option value="tag">Search by Tag</option>
@@ -23,7 +24,10 @@
       <div
         class="search-section"
         v-if="
-          searchType !== 'available' && searchType !== 'checked-out' && searchType !== 'recommend'
+          searchType !== 'available' &&
+          searchType !== 'checked-out' &&
+          searchType !== 'expired' &&
+          searchType !== 'recommend'
         "
       >
         <label>
@@ -62,6 +66,11 @@
       {{ error }}
     </div>
 
+    <!-- Action Success Message -->
+    <div v-if="actionSuccess" class="success-message">
+      {{ actionSuccess }}
+    </div>
+
     <!-- Results Count -->
     <div v-if="items.length > 0" class="results-info">
       Found {{ items.length }} item{{ items.length !== 1 ? 's' : '' }}
@@ -78,6 +87,8 @@
             <th>Last Kerb</th>
             <th>Categories</th>
             <th>Tags</th>
+            <th>Checkout</th>
+            <th>Checkin</th>
           </tr>
         </thead>
         <tbody>
@@ -107,6 +118,45 @@
                   {{ tag }}
                 </span>
               </div>
+            </td>
+            <td>
+              <div class="action-cell">
+                <input
+                  v-model="checkoutKerbs[item.itemName]"
+                  type="text"
+                  placeholder="Enter kerb"
+                  class="kerb-input"
+                  :disabled="!item.available || processingItems.has(item.itemName)"
+                />
+                <button
+                  @click="handleCheckout(item.itemName)"
+                  :disabled="
+                    !item.available ||
+                    !checkoutKerbs[item.itemName]?.trim() ||
+                    processingItems.has(item.itemName)
+                  "
+                  class="btn-action btn-checkout"
+                >
+                  {{
+                    processingItems.has(item.itemName) && currentAction === 'checkout'
+                      ? '...'
+                      : 'Checkout'
+                  }}
+                </button>
+              </div>
+            </td>
+            <td>
+              <button
+                @click="handleCheckin(item.itemName)"
+                :disabled="item.available || processingItems.has(item.itemName)"
+                class="btn-action btn-checkin"
+              >
+                {{
+                  processingItems.has(item.itemName) && currentAction === 'checkin'
+                    ? '...'
+                    : 'Checkin'
+                }}
+              </button>
             </td>
           </tr>
         </tbody>
@@ -140,6 +190,7 @@ const props = defineProps<{
   externalSearchType?:
     | 'available'
     | 'checked-out'
+    | 'expired'
     | 'item'
     | 'category'
     | 'tag'
@@ -150,9 +201,14 @@ const props = defineProps<{
   triggerSearch?: number
 }>()
 
+const emit = defineEmits<{
+  'results-updated': [itemCount: number]
+}>()
+
 const searchType = ref<
   | 'available'
   | 'checked-out'
+  | 'expired'
   | 'item'
   | 'category'
   | 'tag'
@@ -164,6 +220,10 @@ const searchQuery = ref(props.externalSearchQuery || '')
 const items = ref<InventoryItem[]>([])
 const loading = ref(false)
 const error = ref('')
+const actionSuccess = ref('')
+const checkoutKerbs = reactive<Record<string, string>>({})
+const processingItems = ref(new Set<string>())
+const currentAction = ref<'checkout' | 'checkin' | ''>('')
 const inventoryEvents = useInventoryEventsStore()
 const highlighted = reactive<Record<string, boolean>>({})
 
@@ -195,23 +255,10 @@ watch(
   },
 )
 
-// Auto-refresh when other views signal an inventory update
-watch(
-  () => inventoryEvents.version,
-  async () => {
-    // Only refresh if the user has already performed a search (has items displayed)
-    if (loading.value || items.value.length === 0) return
-    const changed = inventoryEvents.lastItemName
-    await handleSearch()
-    if (changed) {
-      highlightRow(changed)
-    }
-  },
-)
-
 async function handleSearch() {
   loading.value = true
   error.value = ''
+  actionSuccess.value = ''
 
   console.log('Starting search with type:', searchType.value, 'query:', searchQuery.value)
 
@@ -263,6 +310,17 @@ async function handleSearch() {
         }
         break
 
+      case 'expired':
+        console.log('Fetching expired items')
+        {
+          const data = await apiFetch<unknown>('/Viewer/viewExpired', {
+            method: 'POST',
+            json: true,
+          })
+          result = parseItemsFromData(data)
+        }
+        break
+
       case 'item':
         if (!searchQuery.value.trim()) {
           error.value = 'Please enter an item name'
@@ -277,7 +335,6 @@ async function handleSearch() {
             body: searchQuery.value.trim(),
           })
           result = parseItemsFromData(data)
-          // console.log(result)
         }
         break
 
@@ -372,6 +429,7 @@ async function handleSearch() {
 
     console.log('Search result (normalized array, length):', result, result?.length)
     items.value = result
+    emit('results-updated', result.length)
 
     if (result.length === 0) {
       error.value = 'No items found'
@@ -380,8 +438,117 @@ async function handleSearch() {
     console.error('Search error:', err)
     error.value = err instanceof Error ? err.message : 'An error occurred while fetching data'
     items.value = []
+    emit('results-updated', 0)
   } finally {
     loading.value = false
+  }
+}
+
+async function handleCheckout(itemName: string) {
+  const kerb = checkoutKerbs[itemName]?.trim()
+  if (!kerb) return
+
+  processingItems.value.add(itemName)
+  currentAction.value = 'checkout'
+  error.value = ''
+  actionSuccess.value = ''
+
+  try {
+    // Send checkout data with json=true so apiFetch stringifies and parses
+    await apiFetch<unknown>('/Reservation/checkoutItem', {
+      method: 'POST',
+      json: true,
+      body: { kerb, item: itemName },
+    })
+
+    // Optimistically update the local table immediately
+    const idx = items.value.findIndex((i) => i.itemName === itemName)
+    if (idx !== -1) {
+      const base = items.value[idx] as InventoryItem
+      const updated: InventoryItem = {
+        ...base,
+        available: false,
+        lastKerb: kerb,
+        lastCheckout: new Date().toISOString(),
+      }
+      items.value.splice(idx, 1, updated)
+    }
+
+    actionSuccess.value = `Successfully checked out "${itemName}" to ${kerb}`
+    highlightRow(itemName)
+    checkoutKerbs[itemName] = ''
+
+    // Fetch the latest record for this item to ensure DB is updated
+    await refreshItemFromServer(itemName)
+
+    // Also refresh the current result set to reflect any list-wide changes
+    await handleSearch()
+
+    // Notify other views to refresh (include itemName so they can highlight)
+    inventoryEvents.bump('checkout', itemName)
+
+    // Clear success message after 3 seconds
+    setTimeout(() => {
+      actionSuccess.value = ''
+    }, 3000)
+  } catch (err) {
+    console.error('Checkout error:', err)
+    error.value =
+      err instanceof Error ? err.message : `Failed to checkout "${itemName}". Please try again.`
+  } finally {
+    processingItems.value.delete(itemName)
+    currentAction.value = ''
+  }
+}
+
+async function handleCheckin(itemName: string) {
+  processingItems.value.add(itemName)
+  currentAction.value = 'checkin'
+  error.value = ''
+  actionSuccess.value = ''
+
+  try {
+    // Send checkin data with json=true so apiFetch stringifies and parses
+    await apiFetch<unknown>('/Reservation/checkinItem', {
+      method: 'POST',
+      json: true,
+      body: { itemName },
+    })
+
+    // Optimistically update the local table immediately
+    const idx = items.value.findIndex((i) => i.itemName === itemName)
+    if (idx !== -1) {
+      const base = items.value[idx] as InventoryItem
+      const updated: InventoryItem = {
+        ...base,
+        available: true,
+      }
+      items.value.splice(idx, 1, updated)
+    }
+
+    actionSuccess.value = `Successfully checked in "${itemName}"`
+    highlightRow(itemName)
+
+    // Fetch the latest record for this item to ensure DB is updated
+    await refreshItemFromServer(itemName)
+
+    // Also refresh the current result set to reflect any list-wide changes
+    await handleSearch()
+
+    // Notify other views to refresh (include itemName so they can highlight)
+    inventoryEvents.bump('checkin', itemName)
+
+    // Clear success message after 3 seconds
+    setTimeout(() => {
+      actionSuccess.value = ''
+    }, 3000)
+  } catch (err) {
+    console.error('Checkin error:', err)
+    error.value =
+      err instanceof Error ? err.message : `Failed to checkin "${itemName}". Please try again.`
+  } finally {
+    processingItems.value.delete(itemName)
+    currentAction.value = ''
   }
 }
 
@@ -389,6 +556,45 @@ function clearResults() {
   items.value = []
   searchQuery.value = ''
   error.value = ''
+  actionSuccess.value = ''
+  Object.keys(checkoutKerbs).forEach((key) => delete checkoutKerbs[key])
+  emit('results-updated', 0)
+}
+
+// Fetch and update a single item from the server to confirm DB changes are reflected
+async function refreshItemFromServer(itemName: string) {
+  try {
+    const data = await apiFetch<unknown>('/Viewer/viewItem', {
+      method: 'POST',
+      json: true,
+      body: itemName,
+    })
+    const updatedItems = ((): InventoryItem[] => {
+      const isObject = (v: unknown): v is Record<string, unknown> =>
+        typeof v === 'object' && v !== null
+      if (Array.isArray(data)) return data as InventoryItem[]
+      if (isObject(data)) {
+        const obj = data as { result?: unknown; items?: unknown }
+        if (Array.isArray(obj.result)) return obj.result as InventoryItem[]
+        if (Array.isArray(obj.items)) return obj.items as InventoryItem[]
+      }
+      return []
+    })()
+
+    if (updatedItems.length > 0) {
+      const latest = updatedItems[0] as InventoryItem
+      const idx = items.value.findIndex((i) => i.itemName === latest.itemName)
+      if (idx !== -1) {
+        items.value.splice(idx, 1, latest)
+      }
+    } else {
+      // If we didn't get a record back, fallback to a full refresh
+      await handleSearch()
+    }
+  } catch {
+    // On error, fallback to a full refresh
+    await handleSearch()
+  }
 }
 
 function getInputLabel(): string {
@@ -435,7 +641,7 @@ function highlightRow(name: string) {
 
 <style scoped>
 .inventory-viewer {
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
   padding: 20px;
 }
@@ -531,6 +737,16 @@ button {
   margin-bottom: 20px;
 }
 
+.success-message {
+  padding: 12px;
+  background-color: #d4edda;
+  border: 1px solid #c3e6cb;
+  border-radius: 4px;
+  color: #155724;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
 .results-info {
   padding: 10px;
   background-color: #d4edda;
@@ -577,7 +793,7 @@ tr.unavailable {
   background-color: #fff3cd;
 }
 
-/* Subtle highlight when a row was just updated elsewhere */
+/* Subtle highlight when a row was just updated */
 tr.updated {
   background-color: #e6ffed; /* soft green */
 }
@@ -627,6 +843,60 @@ tr {
 .tag.category {
   background-color: #cfe2ff;
   color: #084298;
+}
+
+.action-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.kerb-input {
+  padding: 6px 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 13px;
+  min-width: 120px;
+}
+
+.kerb-input:disabled {
+  background-color: #e9ecef;
+  cursor: not-allowed;
+}
+
+.btn-action {
+  padding: 6px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.btn-checkout {
+  background-color: #0d6efd;
+  color: white;
+}
+
+.btn-checkout:hover:not(:disabled) {
+  background-color: #0b5ed7;
+}
+
+.btn-checkout:disabled {
+  background-color: #87a8ee;
+  cursor: not-allowed;
+}
+
+.btn-checkin {
+  background-color: #198754;
+  color: white;
+}
+
+.btn-checkin:hover:not(:disabled) {
+  background-color: #157347;
+}
+
+.btn-checkin:disabled {
+  background-color: #8cc9aa;
+  cursor: not-allowed;
 }
 
 .empty-state {
