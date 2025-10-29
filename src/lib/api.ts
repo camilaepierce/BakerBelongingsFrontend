@@ -11,6 +11,18 @@ function buildUrl(path: string): string {
   return `${base}${path}`
 }
 
+// Auth token and unauthorized handler hooks are set by the auth/session layer.
+let authTokenGetter: (() => string | undefined) | undefined
+let unauthorizedHandler: (() => void) | undefined
+
+export function setAuthTokenGetter(getter: () => string | undefined) {
+  authTokenGetter = getter
+}
+
+export function setUnauthorizedHandler(handler: () => void) {
+  unauthorizedHandler = handler
+}
+
 export async function apiFetch<TResponse>(
   path: string,
   options: {
@@ -33,6 +45,12 @@ export async function apiFetch<TResponse>(
     finalHeaders['Content-Type'] = finalHeaders['Content-Type'] ?? 'application/json'
   }
 
+  // Attach Authorization header if available
+  const token = authTokenGetter?.()
+  if (token) {
+    finalHeaders['Authorization'] = finalHeaders['Authorization'] ?? `Bearer ${token}`
+  }
+
   if (body !== undefined) {
     payload = json ? JSON.stringify(body) : (body as BodyInit)
   }
@@ -44,6 +62,17 @@ export async function apiFetch<TResponse>(
     credentials,
     signal,
   })
+
+  // Centralized 401 handling: notify auth layer, then throw.
+  if (response.status === 401) {
+    try {
+      unauthorizedHandler?.()
+    } catch {
+      // no-op
+    }
+    const text = await response.text().catch(() => '')
+    throw new Error(`API ${method} ${path} failed: 401 Unauthorized ${text}`)
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')

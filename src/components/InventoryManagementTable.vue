@@ -129,6 +129,7 @@
                   :disabled="!item.available || processingItems.has(item.itemName)"
                 />
                 <button
+                  v-has-any-flag.disable="['Houseteam', 'Desk']"
                   @click="handleCheckout(item.itemName)"
                   :disabled="
                     !item.available ||
@@ -147,6 +148,7 @@
             </td>
             <td>
               <button
+                v-has-any-flag.disable="['Houseteam', 'Desk']"
                 @click="handleCheckin(item.itemName)"
                 :disabled="item.available || processingItems.has(item.itemName)"
                 class="btn-action btn-checkin"
@@ -275,11 +277,16 @@ async function handleSearch() {
         const obj = data as MaybeItems
         if (Array.isArray(obj.result)) return obj.result as InventoryItem[]
         if (Array.isArray(obj.items)) return obj.items as InventoryItem[]
-        if (typeof obj.error === 'string') throw new Error(String(obj.error))
+        // Backend now returns empty lists rather than throwing for missing items
+        if (typeof obj.error === 'string') {
+          console.warn('Viewer API returned error string; treating as empty list:', obj.error)
+          return []
+        }
       }
       // If server returned a string (e.g., error message), surface it
       if (typeof data === 'string') {
-        throw new Error(data)
+        console.warn('Viewer API returned string response; treating as empty list:', data)
+        return []
       }
       console.warn('Unexpected response shape from Viewer API:', data)
       return []
@@ -647,7 +654,7 @@ function highlightRow(name: string) {
 }
 
 h1 {
-  color: #2c3e50;
+  color: var(--bb-heading);
   margin-bottom: 30px;
 }
 
@@ -658,7 +665,8 @@ h1 {
   align-items: flex-end;
   margin-bottom: 20px;
   padding: 20px;
-  background-color: #f8f9fa;
+  background-color: var(--bb-surface);
+  border: 1px solid var(--bb-border);
   border-radius: 8px;
 }
 
@@ -675,14 +683,14 @@ h1 {
 
 .search-section span {
   font-weight: 600;
-  color: #1a1d20;
+  color: var(--bb-text);
   font-size: 14px;
 }
 
 select,
 input[type='text'] {
   padding: 8px 12px;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--bb-border);
   border-radius: 4px;
   font-size: 14px;
   min-width: 200px;
@@ -691,8 +699,8 @@ input[type='text'] {
 select:focus,
 input[type='text']:focus {
   outline: none;
-  border-color: #42b983;
-  box-shadow: 0 0 0 2px rgba(66, 185, 131, 0.1);
+  border-color: var(--bb-primary);
+  box-shadow: 0 0 0 2px rgba(55, 93, 96, 0.15);
 }
 
 button {
@@ -706,53 +714,53 @@ button {
 }
 
 .btn-primary {
-  background-color: #42b983;
-  color: white;
+  background-color: var(--bb-primary);
+  color: #fff;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: #359268;
+  filter: brightness(0.95);
 }
 
 .btn-primary:disabled {
-  background-color: #95c9b4;
+  background-color: rgba(55, 93, 96, 0.35);
   cursor: not-allowed;
 }
 
 .btn-secondary {
-  background-color: #6c757d;
-  color: white;
+  background-color: var(--bb-brown);
+  color: #fff;
 }
 
 .btn-secondary:hover {
-  background-color: #5a6268;
+  filter: brightness(0.95);
 }
 
 .error-message {
   padding: 12px;
-  background-color: #f8d7da;
-  border: 1px solid #f5c6cb;
+  background-color: rgba(218, 138, 113, 0.15);
+  border: 1px solid rgba(218, 138, 113, 0.35);
   border-radius: 4px;
-  color: #721c24;
+  color: var(--bb-brown);
   margin-bottom: 20px;
 }
 
 .success-message {
   padding: 12px;
-  background-color: #d4edda;
-  border: 1px solid #c3e6cb;
+  background-color: rgba(111, 217, 155, 0.15);
+  border: 1px solid rgba(111, 217, 155, 0.35);
   border-radius: 4px;
-  color: #155724;
+  color: var(--bb-primary);
   margin-bottom: 20px;
   font-weight: 600;
 }
 
 .results-info {
   padding: 10px;
-  background-color: #d4edda;
-  border: 1px solid #c3e6cb;
+  background-color: rgba(111, 217, 155, 0.15);
+  border: 1px solid rgba(111, 217, 155, 0.35);
   border-radius: 4px;
-  color: #155724;
+  color: var(--bb-primary);
   margin-bottom: 20px;
   font-weight: 600;
 }
@@ -765,32 +773,32 @@ button {
 
 table {
   width: 100%;
-  color: #1a1d20;
+  color: var(--bb-text);
   border-collapse: collapse;
-  background-color: white;
+  background-color: var(--bb-bg);
 }
 
 th,
 td {
   padding: 12px;
   text-align: left;
-  border-bottom: 1px solid #dee2e6;
+  border-bottom: 1px solid var(--bb-border);
 }
 
 th {
-  background-color: #2c3e50;
-  color: white;
+  background-color: var(--bb-primary);
+  color: #fff;
   font-weight: 600;
   position: sticky;
   top: 0;
 }
 
 tr:hover {
-  background-color: #f8f9fa;
+  background-color: rgba(112, 206, 218, 0.08);
 }
 
 tr.unavailable {
-  background-color: #fff3cd;
+  background-color: rgba(218, 138, 113, 0.08);
 }
 
 /* Subtle highlight when a row was just updated */
@@ -804,7 +812,7 @@ tr {
 
 .item-name {
   font-weight: 600;
-  color: #2c3e50;
+  color: var(--bb-primary);
 }
 
 .status-badge {
@@ -816,13 +824,13 @@ tr {
 }
 
 .status-badge.available {
-  background-color: #d4edda;
-  color: #155724;
+  background-color: rgba(111, 217, 155, 0.2);
+  color: var(--bb-primary);
 }
 
 .status-badge.unavailable {
-  background-color: #f8d7da;
-  color: #721c24;
+  background-color: rgba(218, 138, 113, 0.2);
+  color: var(--bb-brown);
 }
 
 .tag-list {
@@ -834,15 +842,15 @@ tr {
 .tag {
   display: inline-block;
   padding: 3px 8px;
-  background-color: #e9ecef;
+  background-color: rgba(55, 93, 96, 0.1);
   border-radius: 4px;
   font-size: 12px;
-  color: #495057;
+  color: var(--bb-primary);
 }
 
 .tag.category {
-  background-color: #cfe2ff;
-  color: #084298;
+  background-color: rgba(112, 206, 218, 0.2);
+  color: var(--bb-primary);
 }
 
 .action-cell {
@@ -854,14 +862,14 @@ tr {
 
 .kerb-input {
   padding: 6px 8px;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--bb-border);
   border-radius: 4px;
   font-size: 13px;
   min-width: 120px;
 }
 
 .kerb-input:disabled {
-  background-color: #e9ecef;
+  background-color: #eef3f4;
   cursor: not-allowed;
 }
 
@@ -872,37 +880,37 @@ tr {
 }
 
 .btn-checkout {
-  background-color: #0d6efd;
-  color: white;
+  background-color: var(--bb-primary);
+  color: #fff;
 }
 
 .btn-checkout:hover:not(:disabled) {
-  background-color: #0b5ed7;
+  filter: brightness(0.95);
 }
 
 .btn-checkout:disabled {
-  background-color: #87a8ee;
+  background-color: rgba(55, 93, 96, 0.35);
   cursor: not-allowed;
 }
 
 .btn-checkin {
-  background-color: #198754;
-  color: white;
+  background-color: var(--bb-mint);
+  color: #0f3c34;
 }
 
 .btn-checkin:hover:not(:disabled) {
-  background-color: #157347;
+  filter: brightness(0.95);
 }
 
 .btn-checkin:disabled {
-  background-color: #8cc9aa;
+  background-color: rgba(111, 217, 155, 0.35);
   cursor: not-allowed;
 }
 
 .empty-state {
   text-align: center;
   padding: 40px 20px;
-  color: #6c757d;
+  color: var(--bb-brown);
 }
 
 .empty-state p {

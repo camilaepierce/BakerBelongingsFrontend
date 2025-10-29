@@ -1,9 +1,20 @@
 <script setup lang="ts">
-import TheWelcome from '../components/TheWelcome.vue'
+import { ref, onMounted } from 'vue'
+import InventoryTable from '../components/InventoryTable.vue'
+
+// Trigger an initial search when the page loads so users immediately see inventory
+const trigger = ref<number>(0)
+onMounted(() => {
+  trigger.value = Date.now()
+})
 </script>
 
 <template>
   <main>
-    <TheWelcome />
+    <InventoryTable
+      :hide-title="false"
+      :external-search-type="'available'"
+      :trigger-search="trigger"
+    />
   </main>
 </template>

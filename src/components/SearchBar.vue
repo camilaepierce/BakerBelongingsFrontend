@@ -10,7 +10,7 @@
         <option value="category">Category</option>
         <option value="tag">Tag</option>
         <option value="adjacent">AI: Similar Items</option>
-        <option value="autocomplete">AI: Autocomplete</option>
+        <!-- <option value="autocomplete">AI: Autocomplete</option> -->
         <option value="recommend">AI: Recommendations</option>
       </select>
     </div>

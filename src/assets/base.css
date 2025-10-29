@@ -23,21 +23,39 @@
 
 /* semantic color variables for this project */
 :root {
-  --color-background: var(--vt-c-white);
-  --color-background-soft: var(--vt-c-white-soft);
-  --color-background-mute: var(--vt-c-white-mute);
+  /* Brand palette */
+  --bb-black: #181818; /* primary dark */
+  --bb-primary: #375d60; /* deep teal */
+  --bb-accent: #70ceda; /* light cyan */
+  --bb-brown: #6b524b; /* warm brown */
+  --bb-salmon: #da8a71; /* salmon (danger) */
+  --bb-mint: #6fd99b; /* mint (success) */
 
-  --color-border: var(--vt-c-divider-light-2);
-  --color-border-hover: var(--vt-c-divider-light-1);
+  /* Derived tokens */
+  --bb-bg: #ffffff;
+  --bb-surface: var(--bb-primary);
+  --bb-border: #d7e0e1;
+  --bb-heading: #ffffff;
+  --bb-text: var(--bb-black);
+  --bb-link: var(--bb-accent);
 
-  --color-heading: var(--vt-c-text-light-1);
-  --color-text: var(--vt-c-text-light-1);
+  /* Legacy aliases used across starter styles */
+  --color-background: var(--bb-bg);
+  --color-background-soft: var(--bb-surface);
+  --color-background-mute: #eef3f4;
+
+  --color-border: var(--bb-border);
+  --color-border-hover: #b9c6c8;
+
+  --color-heading: var(--bb-heading);
+  --color-text: var(--bb-text);
 
   --section-gap: 160px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
+    /* Optional dark mode tying to palette */
     --color-background: var(--vt-c-black);
     --color-background-soft: var(--vt-c-black-soft);
     --color-background-mute: var(--vt-c-black-mute);
@@ -67,17 +85,15 @@ body {
     background-color 0.5s;
   line-height: 1.6;
   font-family:
-    Inter,
+    'Encode Sans Condensed',
+    system-ui,
     -apple-system,
-    BlinkMacSystemFont,
     'Segoe UI',
     Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    'Fira Sans',
-    'Droid Sans',
     'Helvetica Neue',
+    Arial,
+    'Noto Sans',
+    'Liberation Sans',
     sans-serif;
   font-size: 15px;
   text-rendering: optimizeLegibility;
