@@ -10,4 +10,4 @@ Fast-forward a few days. Ben had a great time playing badminton, but accidently 
 
 ## Screen Recording
 
-[Link to Updated Screen Recording](https://youtu.be/KlVDT9iioAM)
+[Link to Updated Screen Recording](https://www.youtube.com/watch?v=Mb0LVHVpSCs)
