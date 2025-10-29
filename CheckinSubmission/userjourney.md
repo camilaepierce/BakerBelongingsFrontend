@@ -7,3 +7,7 @@ Cam decides to check the Baker Belongings inventory to see what Baker Desk has a
 Arriving at Baker Desk, Cam sees his friend Daisy on shift. After exchanging greetings, he asks Daisy if he can check out two set (one for his friend Herby) from behind desk. "Of course!" Daisy says, "Let me just see your school id." Daisy searches through the catalog of desk items with the AI augmented search function, finding the spikeball set quickly. She clicks 'Checkout', and inputs Cam's kerb, which autofills by Daisy typing in his name. Just like that, Cam has checked out his set.
 
 Fast-forward a few days. Cam had a great time playing spikeball, but accidently forgot to return the spikeball set when he got back to Baker. A member of the housteam, Geraldine, now wants to check out the spikeball set. She sees that Cam forgot to return the set, and contacts him through the management site. He is able to return the sets just in time, and will remember to return them sooner for the next time!
+
+
+## Screen Recording
+[Link to Screen Recording](https://youtu.be/pXmfvSIPCcQ)
