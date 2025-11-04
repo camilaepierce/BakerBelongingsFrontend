@@ -1,19 +1,19 @@
 import { apiFetch } from './api'
 import { useRbacStore } from '../stores/rbac'
 
-export async function promoteUser(userId: string, flagId: string) {
+export async function promoteUser(kerb: string, flagId: string) {
   await apiFetch('/Roles/promoteUser', {
     method: 'POST',
     json: true,
-    body: { user: userId, flag: flagId },
+    body: { kerb, permission: flagId },
   })
 }
 
-export async function demoteUser(userId: string, flagId: string) {
+export async function demoteUser(kerb: string, flagId: string) {
   await apiFetch('/Roles/demoteUser', {
     method: 'POST',
     json: true,
-    body: { user: userId, flag: flagId },
+    body: { kerb, permission: flagId },
   })
 }
 

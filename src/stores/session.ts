@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import router from '../router'
 import { apiFetch, setAuthTokenGetter, setUnauthorizedHandler } from '../lib/api'
+import { useRbacStore } from './rbac'
 
 export interface SessionData {
   kerb: string
@@ -103,6 +104,12 @@ export const useSessionStore = defineStore('session', () => {
 
     persist()
     scheduleValidation()
+
+    // Load RBAC immediately after login so permissions/role are available without refresh
+    const rbac = useRbacStore()
+    await rbac.loadForCurrentUser()
+    console.log('✅ RBAC loaded after login:', rbac.permissionFlags)
+
     return true
   }
 
@@ -125,6 +132,12 @@ export const useSessionStore = defineStore('session', () => {
     expiresAt.value = null
     persist()
     clearValidation()
+
+    // Reset RBAC immediately so nav links/permissions disappear without refresh
+    const rbac = useRbacStore()
+    rbac.reset()
+    console.log('✅ RBAC reset on logout')
+
     try {
       if (oldToken) {
         await apiFetch('/Authorization/logout', { method: 'POST', json: true })

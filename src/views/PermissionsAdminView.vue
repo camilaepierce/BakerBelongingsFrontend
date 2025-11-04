@@ -4,11 +4,20 @@
 
     <section class="controls">
       <label>
-        <span>Target User ID</span>
-        <input v-model="targetUserId" type="text" placeholder="Enter userId" />
+        <span>Target Kerb</span>
+        <input v-model="targetKerb" type="text" placeholder="Enter kerb (e.g., camjohnson)" />
       </label>
-      <button class="btn" @click="loadTarget">Load User Permissions</button>
+      <button class="btn" @click="loadTarget" :disabled="loading || !targetKerb.trim()">
+        Load User Permissions
+      </button>
+      <button class="btn success" @click="saveChanges" :disabled="saving || !targetLoaded">
+        Submit Changes
+      </button>
+      <button class="btn ghost" @click="resetChanges" :disabled="saving || !targetLoaded">
+        Reset
+      </button>
       <span v-if="loading" class="muted">Loading…</span>
+      <span v-if="saving" class="muted">Saving…</span>
       <span v-if="error" class="error">{{ error }}</span>
     </section>
 
@@ -20,8 +29,9 @@
             <label>
               <input
                 type="checkbox"
-                :checked="userFlagsSet.has(flag.id)"
-                @change="toggleFlag(flag.id, $event)"
+                :value="flag.id"
+                v-model="selectedFlags"
+                :disabled="!targetLoaded || saving"
               />
               <strong>{{ flag.name || flag.id }}</strong>
               <small class="muted">({{ flag.id }})</small>
@@ -36,12 +46,12 @@
       <div class="column">
         <h2>Target User</h2>
         <div v-if="targetLoaded">
-          <p><strong>User ID:</strong> {{ targetUserId }}</p>
+          <p><strong>Kerb:</strong> {{ targetKerb }}</p>
           <p>
-            <strong>Flags ({{ userFlags.length }})</strong>
+            <strong>Flags ({{ selectedFlags.length }})</strong>
           </p>
           <div class="chip-list">
-            <span v-for="f in userFlags" :key="f" class="chip alt">{{ f }}</span>
+            <span v-for="f in selectedFlags" :key="f" class="chip alt">{{ f }}</span>
           </div>
           <p>
             <strong>Actions ({{ userActions.length }})</strong>
@@ -63,20 +73,21 @@ import { apiFetch } from '../lib/api'
 import { promoteUser, demoteUser } from '../lib/admin'
 
 const rbac = useRbacStore()
-const targetUserId = ref('')
-const userFlags = ref<string[]>([])
+const targetKerb = ref('')
+const loadedFlags = ref<string[]>([])
+const selectedFlags = ref<string[]>([])
 const loading = ref(false)
+const saving = ref(false)
 const error = ref('')
-
-const userFlagsSet = computed(() => new Set(userFlags.value))
 const allFlags = computed(() => rbac.allFlags)
-const userActions = computed(() => rbac.actionsForFlags(userFlags.value))
-const targetLoaded = computed(() => userFlags.value.length > 0)
+const userActions = computed(() => rbac.actionsForFlags(selectedFlags.value))
+const targetLoaded = ref(false)
 
 async function loadTarget() {
-  if (!targetUserId.value.trim()) return
+  if (!targetKerb.value.trim()) return
   loading.value = true
   error.value = ''
+  targetLoaded.value = false
   try {
     await rbac.ensureFlagsCatalog()
     const data = await apiFetch<
@@ -84,29 +95,85 @@ async function loadTarget() {
     >('/Roles/_getUserPermissions', {
       method: 'POST',
       json: true,
-      body: { user: targetUserId.value.trim() },
+      body: { kerb: targetKerb.value.trim() },
     })
     const list = Array.isArray(data) ? data : (data?.result ?? [])
-    userFlags.value = [...new Set(list.flatMap((row) => row.permissionFlags ?? []))]
+    const flags = [...new Set(list.flatMap((row) => row.permissionFlags ?? []))]
+    loadedFlags.value = flags
+    selectedFlags.value = [...flags]
+    targetLoaded.value = true
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load user permissions'
+    const message = e instanceof Error ? e.message : ''
+
+    // Friendly permission load errors
+    if (message.includes('not found') || message.includes('does not exist')) {
+      error.value = `User "${targetKerb.value.trim()}" not found. Please check the kerb.`
+    } else if (message.includes('401') || message.includes('Unauthorized')) {
+      error.value = 'Your session expired. Please log in again.'
+    } else if (message.includes('403') || message.includes('permission')) {
+      error.value = "You don't have permission to view user permissions."
+    } else if (message.includes('500') || message.includes('Internal Server')) {
+      error.value = 'Server error. Please try again in a moment.'
+    } else if (message) {
+      error.value = message
+    } else {
+      error.value = 'Failed to load user permissions. Please try again.'
+    }
   } finally {
     loading.value = false
   }
 }
 
-async function toggleFlag(flagId: string, ev: Event) {
-  const checked = (ev.target as HTMLInputElement).checked
+async function saveChanges() {
+  if (!targetLoaded.value || saving.value) return
+  saving.value = true
+  error.value = ''
   try {
-    if (checked) {
-      await promoteUser(targetUserId.value.trim(), flagId)
-    } else {
-      await demoteUser(targetUserId.value.trim(), flagId)
+    const before = new Set(loadedFlags.value)
+    const after = new Set(selectedFlags.value)
+    const toAdd: string[] = []
+    const toRemove: string[] = []
+    // Compute diffs
+    for (const f of after) if (!before.has(f)) toAdd.push(f)
+    for (const f of before) if (!after.has(f)) toRemove.push(f)
+
+    // Apply changes
+    for (const f of toAdd) {
+      await promoteUser(targetKerb.value.trim(), f)
     }
+    for (const f of toRemove) {
+      await demoteUser(targetKerb.value.trim(), f)
+    }
+
+    // Refresh snapshot from server to reflect real state
     await loadTarget()
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to update flag'
+    const message = e instanceof Error ? e.message : ''
+
+    // Friendly permission save errors
+    if (message.includes('not found') || message.includes('does not exist')) {
+      error.value = `User "${targetKerb.value.trim()}" not found or permission flag invalid.`
+    } else if (message.includes('not valid') || message.includes('invalid')) {
+      error.value = 'One or more permission flags are invalid. Please refresh and try again.'
+    } else if (message.includes('401') || message.includes('Unauthorized')) {
+      error.value = 'Your session expired. Please log in again.'
+    } else if (message.includes('403') || message.includes('permission')) {
+      error.value = "You don't have permission to modify user permissions."
+    } else if (message.includes('500') || message.includes('Internal Server')) {
+      error.value = 'Server error. Changes may not have been saved. Please try again.'
+    } else if (message) {
+      error.value = `Save failed: ${message}`
+    } else {
+      error.value = 'Failed to save changes. Please try again.'
+    }
+  } finally {
+    saving.value = false
   }
+}
+
+function resetChanges() {
+  if (!targetLoaded.value) return
+  selectedFlags.value = [...loadedFlags.value]
 }
 
 onMounted(async () => {
@@ -138,6 +205,19 @@ onMounted(async () => {
   color: white;
   border-radius: 6px;
   cursor: pointer;
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.btn.ghost {
+  background: white;
+  color: #1e40af;
+  border-color: #cbd5e1;
+}
+.btn.success {
+  background: #16a34a;
+  border-color: #16a34a;
 }
 .layout {
   display: grid;

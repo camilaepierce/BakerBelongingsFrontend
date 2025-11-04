@@ -70,7 +70,7 @@ export async function initializeAdminUser(credentials: {
         await apiFetch('/Roles/promoteUser', {
           method: 'POST',
           json: true,
-          body: { user: loginRes.userId, flag: flag.id },
+          body: { user: loginRes.userId, permission: flag.id },
         })
         console.log(`  ✓ Promoted to flag: ${flag.name || flag.id}`)
         successCount++

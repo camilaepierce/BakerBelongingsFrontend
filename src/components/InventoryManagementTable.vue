@@ -257,6 +257,20 @@ watch(
   },
 )
 
+// Auto-refresh when other views signal an inventory update
+watch(
+  () => inventoryEvents.version,
+  async () => {
+    // Only refresh if the user has already performed a search (has items displayed)
+    if (loading.value || items.value.length === 0) return
+    const changed = inventoryEvents.lastItemName
+    await handleSearch()
+    if (changed) {
+      highlightRow(changed)
+    }
+  },
+)
+
 async function handleSearch() {
   loading.value = true
   error.value = ''
@@ -443,7 +457,25 @@ async function handleSearch() {
     }
   } catch (err) {
     console.error('Search error:', err)
-    error.value = err instanceof Error ? err.message : 'An error occurred while fetching data'
+    const message = err instanceof Error ? err.message : ''
+
+    // Make API errors more user-friendly
+    if (message.includes('401') || message.includes('Unauthorized')) {
+      error.value = 'Your session has expired. Please log in again.'
+    } else if (message.includes('403') || message.includes('Forbidden')) {
+      error.value = "You don't have permission to view this data."
+    } else if (message.includes('404') || message.includes('Not Found')) {
+      error.value = 'No items found. The inventory might be empty or unavailable.'
+    } else if (message.includes('500') || message.includes('Internal Server')) {
+      error.value = 'Server error. Please try again in a moment.'
+    } else if (message.includes('Network') || message.includes('fetch')) {
+      error.value = 'Connection issue. Check your internet and try again.'
+    } else if (message) {
+      error.value = message
+    } else {
+      error.value = 'Something went wrong. Please try again.'
+    }
+
     items.value = []
     emit('results-updated', 0)
   } finally {
@@ -468,30 +500,11 @@ async function handleCheckout(itemName: string) {
       body: { kerb, item: itemName },
     })
 
-    // Optimistically update the local table immediately
-    const idx = items.value.findIndex((i) => i.itemName === itemName)
-    if (idx !== -1) {
-      const base = items.value[idx] as InventoryItem
-      const updated: InventoryItem = {
-        ...base,
-        available: false,
-        lastKerb: kerb,
-        lastCheckout: new Date().toISOString(),
-      }
-      items.value.splice(idx, 1, updated)
-    }
-
     actionSuccess.value = `Successfully checked out "${itemName}" to ${kerb}`
-    highlightRow(itemName)
     checkoutKerbs[itemName] = ''
 
-    // Fetch the latest record for this item to ensure DB is updated
-    await refreshItemFromServer(itemName)
-
-    // Also refresh the current result set to reflect any list-wide changes
-    await handleSearch()
-
     // Notify other views to refresh (include itemName so they can highlight)
+    // The event watcher will handle refreshing this table too
     inventoryEvents.bump('checkout', itemName)
 
     // Clear success message after 3 seconds
@@ -500,8 +513,24 @@ async function handleCheckout(itemName: string) {
     }, 3000)
   } catch (err) {
     console.error('Checkout error:', err)
-    error.value =
-      err instanceof Error ? err.message : `Failed to checkout "${itemName}". Please try again.`
+    const message = err instanceof Error ? err.message : ''
+
+    // Friendly checkout error messages
+    if (message.includes('not found') || message.includes('does not exist')) {
+      error.value = `Item "${itemName}" not found. It may have been removed.`
+    } else if (message.includes('already checked out') || message.includes('unavailable')) {
+      error.value = `"${itemName}" is already checked out. Please check in first.`
+    } else if (message.includes('User') && message.includes('not found')) {
+      error.value = `User "${kerb}" not found. Please check the kerb spelling.`
+    } else if (message.includes('401') || message.includes('Unauthorized')) {
+      error.value = 'Your session expired. Please log in again.'
+    } else if (message.includes('403') || message.includes('permission')) {
+      error.value = "You don't have permission to checkout items."
+    } else if (message) {
+      error.value = `Checkout failed: ${message}`
+    } else {
+      error.value = `Could not checkout "${itemName}". Please try again.`
+    }
   } finally {
     processingItems.value.delete(itemName)
     currentAction.value = ''
@@ -522,27 +551,10 @@ async function handleCheckin(itemName: string) {
       body: { itemName },
     })
 
-    // Optimistically update the local table immediately
-    const idx = items.value.findIndex((i) => i.itemName === itemName)
-    if (idx !== -1) {
-      const base = items.value[idx] as InventoryItem
-      const updated: InventoryItem = {
-        ...base,
-        available: true,
-      }
-      items.value.splice(idx, 1, updated)
-    }
-
     actionSuccess.value = `Successfully checked in "${itemName}"`
-    highlightRow(itemName)
-
-    // Fetch the latest record for this item to ensure DB is updated
-    await refreshItemFromServer(itemName)
-
-    // Also refresh the current result set to reflect any list-wide changes
-    await handleSearch()
 
     // Notify other views to refresh (include itemName so they can highlight)
+    // The event watcher will handle refreshing this table too
     inventoryEvents.bump('checkin', itemName)
 
     // Clear success message after 3 seconds
@@ -551,8 +563,22 @@ async function handleCheckin(itemName: string) {
     }, 3000)
   } catch (err) {
     console.error('Checkin error:', err)
-    error.value =
-      err instanceof Error ? err.message : `Failed to checkin "${itemName}". Please try again.`
+    const message = err instanceof Error ? err.message : ''
+
+    // Friendly checkin error messages
+    if (message.includes('not found') || message.includes('does not exist')) {
+      error.value = `Item "${itemName}" not found. It may have been removed.`
+    } else if (message.includes('already available') || message.includes('not checked out')) {
+      error.value = `"${itemName}" is already available. No checkin needed.`
+    } else if (message.includes('401') || message.includes('Unauthorized')) {
+      error.value = 'Your session expired. Please log in again.'
+    } else if (message.includes('403') || message.includes('permission')) {
+      error.value = "You don't have permission to checkin items."
+    } else if (message) {
+      error.value = `Checkin failed: ${message}`
+    } else {
+      error.value = `Could not checkin "${itemName}". Please try again.`
+    }
   } finally {
     processingItems.value.delete(itemName)
     currentAction.value = ''
@@ -566,42 +592,6 @@ function clearResults() {
   actionSuccess.value = ''
   Object.keys(checkoutKerbs).forEach((key) => delete checkoutKerbs[key])
   emit('results-updated', 0)
-}
-
-// Fetch and update a single item from the server to confirm DB changes are reflected
-async function refreshItemFromServer(itemName: string) {
-  try {
-    const data = await apiFetch<unknown>('/Viewer/viewItem', {
-      method: 'POST',
-      json: true,
-      body: itemName,
-    })
-    const updatedItems = ((): InventoryItem[] => {
-      const isObject = (v: unknown): v is Record<string, unknown> =>
-        typeof v === 'object' && v !== null
-      if (Array.isArray(data)) return data as InventoryItem[]
-      if (isObject(data)) {
-        const obj = data as { result?: unknown; items?: unknown }
-        if (Array.isArray(obj.result)) return obj.result as InventoryItem[]
-        if (Array.isArray(obj.items)) return obj.items as InventoryItem[]
-      }
-      return []
-    })()
-
-    if (updatedItems.length > 0) {
-      const latest = updatedItems[0] as InventoryItem
-      const idx = items.value.findIndex((i) => i.itemName === latest.itemName)
-      if (idx !== -1) {
-        items.value.splice(idx, 1, latest)
-      }
-    } else {
-      // If we didn't get a record back, fallback to a full refresh
-      await handleSearch()
-    }
-  } catch {
-    // On error, fallback to a full refresh
-    await handleSearch()
-  }
 }
 
 function getInputLabel(): string {

@@ -3,12 +3,17 @@
 **Description:** removes user from Role containing given Permission Flag
 
 **Requirements:**
-- user is a valid User, permission is a valid Permission Flag, user is within the role permission refers to
+
+- Either `user` (ID) or `kerb` (string) must resolve to a valid user
+- `permission` is a valid Permission Flag
+- user is within the role permission refers to
 
 **Effects:**
+
 - removes user from Role containing given Permission Flag
 
-**Request Body:**
+**Request Body (one of):**
+
 ```json
 {
   "user": "string",
@@ -16,15 +21,30 @@
 }
 ```
 
+or
+
+```json
+{
+  "kerb": "string",
+  "permission": "string"
+}
+```
+
 **Success Response Body (Action):**
+
 ```json
 {}
 ```
 
 **Error Response Body:**
+
 ```json
 {
   "error": "string"
 }
 ```
 
+**Notes:**
+
+- If both `user` and `kerb` are provided, `user` takes precedence.
+- If `kerb` is provided but no user is found, the endpoint returns `{ "error": "User with kerb '<kerb>' not found." }`.

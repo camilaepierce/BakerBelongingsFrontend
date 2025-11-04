@@ -403,7 +403,25 @@ async function handleSearch() {
     }
   } catch (err) {
     console.error('Search error:', err)
-    error.value = err instanceof Error ? err.message : 'An error occurred while fetching data'
+    const message = err instanceof Error ? err.message : ''
+
+    // Make API errors more user-friendly
+    if (message.includes('401') || message.includes('Unauthorized')) {
+      error.value = 'Your session has expired. Please log in again.'
+    } else if (message.includes('403') || message.includes('Forbidden')) {
+      error.value = "You don't have permission to view this data."
+    } else if (message.includes('404') || message.includes('Not Found')) {
+      error.value = 'No items found. The inventory might be empty or unavailable.'
+    } else if (message.includes('500') || message.includes('Internal Server')) {
+      error.value = 'Server error. Please try again in a moment.'
+    } else if (message.includes('Network') || message.includes('fetch')) {
+      error.value = 'Connection issue. Check your internet and try again.'
+    } else if (message) {
+      error.value = message
+    } else {
+      error.value = 'Something went wrong. Please try again.'
+    }
+
     items.value = []
   } finally {
     loading.value = false
