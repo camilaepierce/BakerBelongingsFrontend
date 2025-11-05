@@ -541,7 +541,8 @@ async function handleCheckout(itemName: string) {
     await apiFetch<unknown>('/Reservation/checkoutItem', {
       method: 'POST',
       json: true,
-      body: { kerb, item: itemName },
+      // Backend now normalizes from a single object; prefer itemName key
+      body: { kerb, itemName },
     })
 
     actionSuccess.value = `Successfully checked out "${itemName}" to ${kerb}`

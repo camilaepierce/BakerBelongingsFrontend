@@ -139,10 +139,10 @@ async function saveChanges() {
 
     // Apply changes
     for (const f of toAdd) {
-      await promoteUser(targetKerb.value.trim(), f)
+      await promoteUser({ kerb: targetKerb.value.trim(), permission: f })
     }
     for (const f of toRemove) {
-      await demoteUser(targetKerb.value.trim(), f)
+      await demoteUser({ kerb: targetKerb.value.trim(), permission: f })
     }
 
     // Refresh snapshot from server to reflect real state
