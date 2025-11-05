@@ -87,6 +87,7 @@
             <th>Last Kerb</th>
             <th>Categories</th>
             <th>Tags</th>
+            <th v-if="searchType === 'recommend'">Suggestion</th>
             <th>Checkout</th>
             <th>Checkin</th>
           </tr>
@@ -119,6 +120,7 @@
                 </span>
               </div>
             </td>
+            <td v-if="searchType === 'recommend'">{{ recommendations[item.itemName] || '' }}</td>
             <td>
               <div class="action-cell">
                 <input
@@ -228,6 +230,7 @@ const processingItems = ref(new Set<string>())
 const currentAction = ref<'checkout' | 'checkin' | ''>('')
 const inventoryEvents = useInventoryEventsStore()
 const highlighted = reactive<Record<string, boolean>>({})
+const recommendations = reactive<Record<string, string>>({})
 // Keep per-item snapshots to support optimistic UI with revert-on-error
 const optimisticSnapshots = reactive<
   Record<string, { available: boolean; lastKerb: string; lastCheckout: string | null }>
@@ -376,12 +379,12 @@ async function handleSearch() {
           loading.value = false
           return
         }
-        console.log('Fetching item with body (JSON string):', searchQuery.value.trim())
+        console.log('Fetching item with body:', { itemName: searchQuery.value.trim() })
         {
           const data = await apiFetch<unknown>('/Viewer/viewItem', {
             method: 'POST',
             json: true,
-            body: searchQuery.value.trim(),
+            body: { itemName: searchQuery.value.trim() },
           })
           result = parseItemsFromData(data)
         }
@@ -393,12 +396,12 @@ async function handleSearch() {
           loading.value = false
           return
         }
-        console.log('Fetching category with body (JSON string):', searchQuery.value.trim())
+        console.log('Fetching category with body:', { category: searchQuery.value.trim() })
         {
           const data = await apiFetch<unknown>('/Viewer/viewCategory', {
             method: 'POST',
             json: true,
-            body: searchQuery.value.trim(),
+            body: { category: searchQuery.value.trim() },
           })
           result = parseItemsFromData(data)
         }
@@ -410,12 +413,12 @@ async function handleSearch() {
           loading.value = false
           return
         }
-        console.log('Fetching tag with body (JSON string):', searchQuery.value.trim())
+        console.log('Fetching tag with body:', { tag: searchQuery.value.trim() })
         {
           const data = await apiFetch<unknown>('/Viewer/viewTag', {
             method: 'POST',
             json: true,
-            body: searchQuery.value.trim(),
+            body: { tag: searchQuery.value.trim() },
           })
           result = parseItemsFromData(data)
         }
@@ -468,7 +471,54 @@ async function handleSearch() {
             json: true,
             body: { interests: searchQuery.value.trim() },
           })
-          result = parseItemsFromData(data)
+          // Clear previous recommendations map
+          Object.keys(recommendations).forEach((k) => delete recommendations[k])
+
+          // Normalize recommendation response which can be an array of { item, suggestion }
+          if (Array.isArray(data)) {
+            const arr = data as Array<Record<string, unknown>>
+            const extracted: InventoryItem[] = []
+            for (const entry of arr) {
+              if (entry && typeof entry === 'object' && 'item' in entry) {
+                const it = (entry as { item?: unknown; suggestion?: unknown }).item as
+                  | InventoryItem
+                  | undefined
+                const suggestion = (entry as { suggestion?: unknown }).suggestion
+                if (it && typeof it.itemName === 'string') {
+                  extracted.push(it)
+                  if (typeof suggestion === 'string') {
+                    recommendations[it.itemName] = suggestion
+                  }
+                }
+              }
+            }
+            result = extracted.length ? extracted : parseItemsFromData(data)
+          } else if (
+            typeof data === 'object' &&
+            data !== null &&
+            'result' in (data as Record<string, unknown>) &&
+            Array.isArray((data as Record<string, unknown>).result)
+          ) {
+            const arr = (data as { result: Array<Record<string, unknown>> }).result
+            const extracted: InventoryItem[] = []
+            for (const entry of arr) {
+              if (entry && typeof entry === 'object' && 'item' in entry) {
+                const it = (entry as { item?: unknown; suggestion?: unknown }).item as
+                  | InventoryItem
+                  | undefined
+                const suggestion = (entry as { suggestion?: unknown }).suggestion
+                if (it && typeof it.itemName === 'string') {
+                  extracted.push(it)
+                  if (typeof suggestion === 'string') {
+                    recommendations[it.itemName] = suggestion
+                  }
+                }
+              }
+            }
+            result = extracted.length ? extracted : parseItemsFromData(data)
+          } else {
+            result = parseItemsFromData(data)
+          }
         }
         break
 
