@@ -1,9 +1,13 @@
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
-const defaultApiBase = '/api'
+// Central place to derive the API base URL.
+// Prefer VITE_API_BASE_URL per project convention; fall back to older VITE_API_BASE and finally '/api'.
+type ImportMetaEnvLike = { env?: Record<string, string | undefined> }
+const __env = (import.meta as unknown as ImportMetaEnvLike).env ?? {}
+export const API_BASE: string = __env['VITE_API_BASE_URL'] || __env['VITE_API_BASE'] || '/api'
 
 function buildUrl(path: string): string {
-  const base = import.meta.env.VITE_API_BASE ?? defaultApiBase
+  const base = API_BASE
   if (!path.startsWith('/')) {
     // ensure single slash between base and path
     return `${base}/${path}`

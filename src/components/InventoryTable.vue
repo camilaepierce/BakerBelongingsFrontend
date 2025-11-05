@@ -200,7 +200,13 @@ watch(
   () => inventoryEvents.version,
   async () => {
     // Only refresh if the user has already performed a search (has items displayed)
-    if (loading.value || items.value.length === 0) return
+    // Skip if currently loading to avoid race conditions
+    if (loading.value) return
+
+    // If no items are displayed, there's nothing to refresh
+    // (user hasn't searched yet or cleared results)
+    if (items.value.length === 0) return
+
     const changed = inventoryEvents.lastItemName
     await handleSearch()
     if (changed) {
@@ -253,7 +259,25 @@ async function handleSearch() {
             method: 'POST',
             json: true,
           })
-          result = parseItemsFromData(data)
+          // Handle sync-orchestrated response shape: { allowed: boolean, items?: [...] , error?: string }
+          if (
+            typeof data === 'object' &&
+            data !== null &&
+            'allowed' in (data as Record<string, unknown>)
+          ) {
+            const obj = data as { allowed?: boolean; items?: unknown; error?: unknown }
+            if (obj.allowed === false) {
+              error.value =
+                typeof obj.error === 'string'
+                  ? obj.error
+                  : 'You are not authorized to view available items.'
+              result = []
+            } else {
+              result = Array.isArray(obj.items) ? (obj.items as InventoryItem[]) : []
+            }
+          } else {
+            result = parseItemsFromData(data)
+          }
         }
         break
 
@@ -378,7 +402,7 @@ async function handleSearch() {
     console.log('Search result (normalized array, length):', result, result?.length)
     items.value = result
 
-    if (result.length === 0) {
+    if (!error.value && result.length === 0) {
       // If no results, try AI autocomplete
       if (searchType.value === 'item' && searchQuery.value.trim()) {
         try {

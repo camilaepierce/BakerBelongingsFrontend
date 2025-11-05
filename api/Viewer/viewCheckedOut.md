@@ -1,6 +1,6 @@
 # Viewer API: viewCheckedOut
 
-**Endpoint:** `GET /api/viewer/viewCheckedOut`
+**Endpoint:** `POST /api/viewer/viewCheckedOut`
 
 **Description:** Returns all items that are currently checked out (where `available === false`).
 

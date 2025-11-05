@@ -228,6 +228,10 @@ const processingItems = ref(new Set<string>())
 const currentAction = ref<'checkout' | 'checkin' | ''>('')
 const inventoryEvents = useInventoryEventsStore()
 const highlighted = reactive<Record<string, boolean>>({})
+// Keep per-item snapshots to support optimistic UI with revert-on-error
+const optimisticSnapshots = reactive<
+  Record<string, { available: boolean; lastKerb: string; lastCheckout: string | null }>
+>({})
 
 // Watch for external prop changes
 watch(
@@ -262,7 +266,13 @@ watch(
   () => inventoryEvents.version,
   async () => {
     // Only refresh if the user has already performed a search (has items displayed)
-    if (loading.value || items.value.length === 0) return
+    // Skip if currently loading to avoid race conditions
+    if (loading.value) return
+
+    // If no items are displayed, there's nothing to refresh
+    // (user hasn't searched yet or cleared results)
+    if (items.value.length === 0) return
+
     const changed = inventoryEvents.lastItemName
     await handleSearch()
     if (changed) {
@@ -316,7 +326,25 @@ async function handleSearch() {
             method: 'POST',
             json: true,
           })
-          result = parseItemsFromData(data)
+          // Handle sync-orchestrated response shape: { allowed: boolean, items?: [...] , error?: string }
+          if (
+            typeof data === 'object' &&
+            data !== null &&
+            'allowed' in (data as Record<string, unknown>)
+          ) {
+            const obj = data as { allowed?: boolean; items?: unknown; error?: unknown }
+            if (obj.allowed === false) {
+              error.value =
+                typeof obj.error === 'string'
+                  ? obj.error
+                  : 'You are not authorized to view available items.'
+              result = []
+            } else {
+              result = Array.isArray(obj.items) ? (obj.items as InventoryItem[]) : []
+            }
+          } else {
+            result = parseItemsFromData(data)
+          }
         }
         break
 
@@ -452,7 +480,7 @@ async function handleSearch() {
     items.value = result
     emit('results-updated', result.length)
 
-    if (result.length === 0) {
+    if (!error.value && result.length === 0) {
       error.value = 'No items found'
     }
   } catch (err) {
@@ -492,6 +520,22 @@ async function handleCheckout(itemName: string) {
   error.value = ''
   actionSuccess.value = ''
 
+  // Apply optimistic update: mark unavailable and set kerb/checkout time immediately
+  const idx = items.value.findIndex((i) => i.itemName === itemName)
+  if (idx !== -1) {
+    const item = items.value[idx]
+    if (item) {
+      optimisticSnapshots[itemName] = {
+        available: item.available,
+        lastKerb: item.lastKerb,
+        lastCheckout: item.lastCheckout,
+      }
+      item.available = false
+      item.lastKerb = kerb
+      item.lastCheckout = new Date().toISOString()
+    }
+  }
+
   try {
     // Send checkout data with json=true so apiFetch stringifies and parses
     await apiFetch<unknown>('/Reservation/checkoutItem', {
@@ -502,6 +546,9 @@ async function handleCheckout(itemName: string) {
 
     actionSuccess.value = `Successfully checked out "${itemName}" to ${kerb}`
     checkoutKerbs[itemName] = ''
+
+    // Successful response: clear optimistic snapshot for this item
+    if (optimisticSnapshots[itemName]) delete optimisticSnapshots[itemName]
 
     // Notify other views to refresh (include itemName so they can highlight)
     // The event watcher will handle refreshing this table too
@@ -514,6 +561,19 @@ async function handleCheckout(itemName: string) {
   } catch (err) {
     console.error('Checkout error:', err)
     const message = err instanceof Error ? err.message : ''
+
+    // Revert optimistic update on error
+    const idx = items.value.findIndex((i) => i.itemName === itemName)
+    const snap = optimisticSnapshots[itemName]
+    if (idx !== -1 && snap) {
+      const current = items.value[idx]
+      if (current) {
+        current.available = snap.available
+        current.lastKerb = snap.lastKerb
+        current.lastCheckout = snap.lastCheckout
+      }
+      delete optimisticSnapshots[itemName]
+    }
 
     // Friendly checkout error messages
     if (message.includes('not found') || message.includes('does not exist')) {
@@ -543,6 +603,20 @@ async function handleCheckin(itemName: string) {
   error.value = ''
   actionSuccess.value = ''
 
+  // Apply optimistic update: mark available immediately
+  const idx = items.value.findIndex((i) => i.itemName === itemName)
+  if (idx !== -1) {
+    const item = items.value[idx]
+    if (item) {
+      optimisticSnapshots[itemName] = {
+        available: item.available,
+        lastKerb: item.lastKerb,
+        lastCheckout: item.lastCheckout,
+      }
+      item.available = true
+    }
+  }
+
   try {
     // Send checkin data with json=true so apiFetch stringifies and parses
     await apiFetch<unknown>('/Reservation/checkinItem', {
@@ -552,6 +626,9 @@ async function handleCheckin(itemName: string) {
     })
 
     actionSuccess.value = `Successfully checked in "${itemName}"`
+
+    // Successful response: clear optimistic snapshot for this item
+    if (optimisticSnapshots[itemName]) delete optimisticSnapshots[itemName]
 
     // Notify other views to refresh (include itemName so they can highlight)
     // The event watcher will handle refreshing this table too
@@ -564,6 +641,19 @@ async function handleCheckin(itemName: string) {
   } catch (err) {
     console.error('Checkin error:', err)
     const message = err instanceof Error ? err.message : ''
+
+    // Revert optimistic update on error
+    const idx = items.value.findIndex((i) => i.itemName === itemName)
+    const snap = optimisticSnapshots[itemName]
+    if (idx !== -1 && snap) {
+      const current = items.value[idx]
+      if (current) {
+        current.available = snap.available
+        current.lastKerb = snap.lastKerb
+        current.lastCheckout = snap.lastCheckout
+      }
+      delete optimisticSnapshots[itemName]
+    }
 
     // Friendly checkin error messages
     if (message.includes('not found') || message.includes('does not exist')) {

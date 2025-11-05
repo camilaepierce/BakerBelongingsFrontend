@@ -1,17 +1,14 @@
-### POST /api/Roles/\_getUserPermissions
+### POST /api/Roles/_getUserPermissions
 
 Description: Returns the set of all PermissionFlags associated with the user.
 
 Requirements:
-
 - None. If the user can't be resolved, an empty array of permission flags is returned.
 
 Effects:
-
 - Looks up the user either by internal user ID or by kerb and returns their permission flags.
 
 Request Body (one of):
-
 ```jsonc
 // Option A: by user ID
 { "user": "<user-id>" }
@@ -21,7 +18,6 @@ Request Body (one of):
 ```
 
 Success Response Body (Query):
-
 ```json
 [
   {
@@ -31,7 +27,6 @@ Success Response Body (Query):
 ```
 
 Error Response Body:
-
 ```json
 { "error": "string" }
 ```

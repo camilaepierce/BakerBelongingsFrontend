@@ -11,18 +11,62 @@ export async function initializeAdminUser(credentials: {
   last: string
   password: string
   role?: string
+  useUpdateRolesSync?: boolean // If true, uses sync to atomically register + promote to first flag
 }) {
   try {
     // Step 1: Register the admin user
     console.log('Registering admin user:', credentials.kerb)
     // Ensure any initialized admin is a member of the 'houseteam' role by default
     const registrationBody = { ...credentials, role: credentials.role ?? 'houseteam' }
-    await apiFetch('/Authorization/register', {
-      method: 'POST',
-      json: true,
-      body: registrationBody,
-    })
-    console.log('✓ Admin user registered successfully')
+
+    // Step 1b: Get all available permission flags first (if using sync)
+    let flags: { id: string; name?: string; actions?: string[] }[] = []
+    if (credentials.useUpdateRolesSync) {
+      console.log('Fetching all permission flags...')
+      const flagsResult = await apiFetch<
+        | { id: string; name?: string; actions?: string[] }[]
+        | { result?: { id: string; name?: string; actions?: string[] }[] }
+      >('/Roles/_listAllPermissionFlags', {
+        method: 'POST',
+        json: true,
+      })
+
+      flags = Array.isArray(flagsResult)
+        ? flagsResult
+        : Array.isArray(flagsResult?.result)
+          ? flagsResult.result
+          : []
+
+      console.log(`✓ Found ${flags.length} permission flags`)
+
+      // Use UpdateRoles sync to atomically register + promote to first flag (Houseteam)
+      const houseteamFlag = flags.find((f) => f.id === 'Houseteam' || f.name === 'Houseteam')
+      if (houseteamFlag) {
+        console.log(`Using UpdateRoles sync to register + promote to ${houseteamFlag.id}...`)
+        await apiFetch('/Authorization/register', {
+          method: 'POST',
+          json: true,
+          body: { ...registrationBody, permission: houseteamFlag.id },
+        })
+        console.log('✓ Admin user registered and promoted to Houseteam atomically via sync')
+      } else {
+        console.warn('⚠ Houseteam flag not found, using standard registration')
+        await apiFetch('/Authorization/register', {
+          method: 'POST',
+          json: true,
+          body: registrationBody,
+        })
+        console.log('✓ Admin user registered successfully')
+      }
+    } else {
+      // Standard registration without sync
+      await apiFetch('/Authorization/register', {
+        method: 'POST',
+        json: true,
+        body: registrationBody,
+      })
+      console.log('✓ Admin user registered successfully')
+    }
 
     // Step 2: Login to get token and userId
     console.log('Logging in as admin...')
@@ -42,30 +86,42 @@ export async function initializeAdminUser(credentials: {
       return { success: false, message: 'No userId returned from backend' }
     }
 
-    // Step 3: Get all available permission flags
-    console.log('Fetching all permission flags...')
-    const flagsResult = await apiFetch<
-      | { id: string; name?: string; actions?: string[] }[]
-      | { result?: { id: string; name?: string; actions?: string[] }[] }
-    >('/Roles/_listAllPermissionFlags', {
-      method: 'POST',
-      json: true,
-    })
+    // Step 3: Get all available permission flags (if not already fetched for sync)
+    if (flags.length === 0) {
+      console.log('Fetching all permission flags...')
+      const flagsResult = await apiFetch<
+        | { id: string; name?: string; actions?: string[] }[]
+        | { result?: { id: string; name?: string; actions?: string[] }[] }
+      >('/Roles/_listAllPermissionFlags', {
+        method: 'POST',
+        json: true,
+      })
 
-    const flags = Array.isArray(flagsResult)
-      ? flagsResult
-      : Array.isArray(flagsResult?.result)
-        ? flagsResult.result
-        : []
+      flags = Array.isArray(flagsResult)
+        ? flagsResult
+        : Array.isArray(flagsResult?.result)
+          ? flagsResult.result
+          : []
 
-    console.log(`✓ Found ${flags.length} permission flags`)
+      console.log(`✓ Found ${flags.length} permission flags`)
+    }
 
-    // Step 4: Promote admin user to all flags
+    // Step 4: Promote admin user to all flags (or remaining flags if sync was used)
     console.log('Promoting admin to all flags...')
     let successCount = 0
     let failCount = 0
 
     for (const flag of flags) {
+      // Skip Houseteam if it was already assigned via UpdateRoles sync
+      if (
+        credentials.useUpdateRolesSync &&
+        (flag.id === 'Houseteam' || flag.name === 'Houseteam')
+      ) {
+        console.log(`  ⏭ Skipping ${flag.name || flag.id} (already assigned via sync)`)
+        successCount++
+        continue
+      }
+
       try {
         await apiFetch('/Roles/promoteUser', {
           method: 'POST',

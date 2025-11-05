@@ -113,6 +113,28 @@ export const useSessionStore = defineStore('session', () => {
     return true
   }
 
+  /**
+   * Register a new user.
+   *
+   * @param data - User registration data
+   * @param data.permission - Optional permission flag ID. If provided, triggers the UpdateRoles
+   *                          sync flow for atomic registration + permission assignment.
+   *                          This uses the backend sync orchestration documented in
+   *                          SYNC_IMPLEMENTATION_SUMMARY.md
+   *
+   * @example
+   * // Standard registration
+   * await register({ kerb: 'alice', email: 'alice@example.com', ... })
+   *
+   * @example
+   * // Atomic registration + permission assignment via UpdateRoles sync
+   * await register({
+   *   kerb: 'alice',
+   *   email: 'alice@example.com',
+   *   ...,
+   *   permission: 'Houseteam' // Atomically assigns Houseteam permission
+   * })
+   */
   async function register(data: {
     kerb: string
     email: string
@@ -120,6 +142,7 @@ export const useSessionStore = defineStore('session', () => {
     last: string
     password: string
     role?: string
+    permission?: string
   }) {
     await apiFetch('/Authorization/register', { method: 'POST', json: true, body: data })
   }
